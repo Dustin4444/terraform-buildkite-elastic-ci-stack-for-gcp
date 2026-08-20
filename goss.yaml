@@ -112,10 +112,6 @@ file:
     exists: true
     mode: "0755"
 
-  /usr/local/bin/monitor-preemption:
-    exists: true
-    mode: "0755"
-
   # -- Buildkite utilities --
 
   /usr/bin/fix-buildkite-agent-builds-permissions:
@@ -191,11 +187,6 @@ service:
   # -- GCP-specific services --
   # google-cloud-ops-agent: enabled during image build, auto-starts on boot
   google-cloud-ops-agent:
-    enabled: true
-    running: true
-
-  # preemption-monitor: watches GCE metadata for preemption notices
-  preemption-monitor:
     enabled: true
     running: true
 
@@ -409,12 +400,29 @@ command:
     stdout:
       - /TMPDIR=\/var\/tmp/
 
+  # Graceful shutdown relies on systemd allowing the agent to finish its current
+  # job after SIGTERM rather than applying a service-level stop timeout.
+  systemctl show buildkite-agent.service --property=TimeoutStopUSec:
+    exit-status: 0
+    stdout:
+      - /TimeoutStopUSec=infinity/
+
+  # The shutdown helper identifies agent processes by their service user.
+  systemctl show buildkite-agent.service --property=User:
+    exit-status: 0
+    stdout:
+      - /User=buildkite-agent/
+
+  # Stopping the service must signal only the agent process. Signaling the
+  # whole control group would also terminate the active job being drained.
+  systemctl show buildkite-agent.service --property=KillMode:
+    exit-status: 0
+    stdout:
+      - /KillMode=process/
+
   # ---------------------------------------------------------------------------
   # GCP-specific service checks
   # ---------------------------------------------------------------------------
-
-  systemctl is-enabled preemption-monitor.service:
-    exit-status: 0
 
   systemctl is-enabled google-cloud-ops-agent.service:
     exit-status: 0
